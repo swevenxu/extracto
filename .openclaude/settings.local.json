@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/sho/Documents/Extracto status)",
+      "Bash(find /Users/sho/Documents/Extracto/.next -name page* -o -name layout*)",
+      "Bash(wc:*)",
+      "Bash(sed:*)",
+      "Bash(sed -n '1,49p' /Users/sho/Documents/Extracto/src/app/\\\\\\(main\\\\\\)/record/[id]/page.tsx)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(git stash:*)",
+      "Bash(node -e \"const r=require\\(''''./data/records.json''''\\); const arr=Array.isArray\\(r\\)?r:\\(r.records||Object.values\\(r\\)\\); console.log\\(JSON.stringify\\(arr.map\\(x=>x.id\\)\\)\\)\")",
+      "Bash(curl -s http://localhost:3001/api/records/1e2d655d57cf)",
+      "Bash(curl -s http://localhost:3001/record/1e2d655d57cf -o /tmp/r1.html -w \"record page: %{http_code}\\\\n\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X PATCH http://localhost:3001/api/records/1e2d655d57cf -H 'Content-Type: application/json' -d '{\"\"\"\"vendor\"\"\"\":\"\"\"\"Acme Corp \\(verified\\)\"\"\"\",\"\"\"\"invoiceNumber\"\"\"\":\"\"\"\"ACME-1042\"\"\"\",\"\"\"\"subtotal\"\"\"\":1000,\"\"\"\"tax\"\"\"\":87.5,\"\"\"\"total\"\"\"\":1087.5,\"\"\"\"currency\"\"\"\":\"\"\"\"USD\"\"\"\",\"\"\"\"lineItems\"\"\"\":[{\"\"\"\"description\"\"\"\":\"\"\"\"Widget Pro x10\"\"\"\",\"\"\"\"quantity\"\"\"\":10,\"\"\"\"unitPrice\"\"\"\":100,\"\"\"\"amount\"\"\"\":1000}],\"\"\"\"status\"\"\"\":\"\"\"\"reviewed\"\"\"\"}')",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(''''persisted:'''', d[''''vendor''''], d[''''invoiceNumber''''], d[''''subtotal''''], d[''''lineItems'''']\\)\")",
+      "Bash(pkill -f 'next dev')"
+    ]
+  }
+}
