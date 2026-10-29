@@ -1,6 +1,7 @@
-import { listRecordsByUser } from "@/lib/storage";
+import { getActiveWorkspace, listRecordsByWorkspace, workspaceMembers, workspaceRole } from "@/lib/storage";
 import { currentUserFromCookie } from "@/lib/session";
 
+/** Records and members of the active workspace. */
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.status(405).json({ error: "Method not allowed" });
@@ -8,5 +9,16 @@ export default async function handler(req, res) {
   }
   const user = await currentUserFromCookie(req.headers.cookie);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-  res.status(200).json({ records: listRecordsByUser(user.id) });
+
+  const workspace = getActiveWorkspace(user);
+  res.status(200).json({
+    records: listRecordsByWorkspace(workspace.id),
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+      role: workspaceRole(workspace, user.id),
+      memberCount: workspace.members.length,
+    },
+    members: workspaceMembers(workspace.id),
+  });
 }

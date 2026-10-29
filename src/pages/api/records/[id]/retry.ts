@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   try {
-    const record = await retryExtraction(id, user.id);
+    const record = await retryExtraction(id, user);
     res.status(200).json(record);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

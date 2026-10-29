@@ -4,8 +4,8 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@/app/globals.css";
 
 export const metadata = {
-  title: "Extracto — Invoice & Receipt Extractor",
-  description: "Upload invoices and receipts, extract structured data, review, then export to CSV.",
+  title: "Extracto — Document Data Extractor",
+  description: "Upload invoices, receipts, and bank statements, extract structured data, review, then export to CSV.",
 };
 
 export default function RootLayout({

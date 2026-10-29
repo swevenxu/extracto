@@ -1,5 +1,6 @@
 import type { ExtractedRecord, Stats } from "./types";
 import { convertCurrency } from "./currency";
+import { presetFor, recordAmount, recordCurrency } from "./docTypes";
 
 export async function computeStats(
   records: ExtractedRecord[],
@@ -17,9 +18,13 @@ export async function computeStats(
     if (record.status === "reviewed") {
       reviewed++;
       hasReviewed = true;
-      totalsByCurrency[record.currency] = (totalsByCurrency[record.currency] || 0) + record.total;
-      if (baseCurrency) {
-        grandTotal += await convertCurrency(record.total, record.currency, baseCurrency);
+      // A bank balance is not spend, so only spend-like presets feed the totals.
+      if (presetFor(record.docType).countsInTotals) {
+        const currency = recordCurrency(record);
+        totalsByCurrency[currency] = (totalsByCurrency[currency] || 0) + recordAmount(record);
+        if (baseCurrency) {
+          grandTotal += await convertCurrency(recordAmount(record), currency, baseCurrency);
+        }
       }
     }
     if (record.status === "extracted") extracted++;

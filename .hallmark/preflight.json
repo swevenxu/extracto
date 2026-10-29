@@ -1,0 +1,12 @@
+{
+  "scanned": "2026-10-27",
+  "findings": {
+    "fonts": "IBM Plex Sans Variable (display/body), IBM Plex Mono (outlier), Space Grotesk Variable (figures) via @fontsource; tokens in src/app/tokens.css",
+    "palette": "Console light navy/cobalt locked in design.md; paper/ink/accent/focus tokens in tokens.css",
+    "motion": "restrained; prefers-reduced-motion in base/globals",
+    "spacing": "token scale in tokens.css; shell gutters in globals.css",
+    "framework": "Next.js 14 App Router + Tailwind 4; Hallmark tokens.css + base.css already present"
+  },
+  "preserve": ["design.md locked system", "Extracto wordmark", "app routes and wiring", "Hallmark stamp in globals.css"],
+  "introduce": []
+}

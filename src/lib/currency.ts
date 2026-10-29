@@ -1,5 +1,6 @@
 import type { Currency, ExtractedRecord } from "./types";
 import { getPreferences } from "./storage";
+import { presetFor, recordAmount, recordCurrency } from "./docTypes";
 
 /**
  * Supported base currencies for user preferences.
@@ -260,9 +261,10 @@ export async function computeTotalsByCurrency(
 
   for (const record of records) {
     if (record.status !== "reviewed") continue;
-    const curr = record.currency;
+    if (!presetFor(record.docType).countsInTotals) continue;
+    const curr = recordCurrency(record) as Currency;
     if (!totals[curr]) totals[curr] = { original: 0 };
-    totals[curr].original += record.total;
+    totals[curr].original += recordAmount(record);
   }
 
   // If base currency specified, compute converted totals
@@ -286,7 +288,8 @@ export async function getGrandTotal(
   let total = 0;
   for (const record of records) {
     if (record.status !== "reviewed") continue;
-    total += await convertCurrency(record.total, record.currency, baseCurrency);
+    if (!presetFor(record.docType).countsInTotals) continue;
+    total += await convertCurrency(recordAmount(record), recordCurrency(record) as Currency, baseCurrency);
   }
   return total;
 }

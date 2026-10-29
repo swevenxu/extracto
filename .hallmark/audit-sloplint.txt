@@ -1,0 +1,6 @@
+render tier: 5 screenshots in /Users/sho/Documents/Extracto/.hallmark/before (1280x800, 1440x900, 1920x1080 folds; 1440 and 375 full pages)
+  FAIL 24a src/app/globals.css:223 padding-inline: 12px on .records-table th, .records-tab… where … | fix: Use var(--space-sm)
+  FAIL 40 http://localhost:3000/login:1 [1440px] a field's edge is under 3:1 against what surrounds it:… | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+  REFLEX 39b http://localhost:3000/login:1 [1440px] control height outside 32 to 52px: button.font-medium … | fix: Marketing controls stand 44 to 52px; app UI 32 to 40px with a 44px hit target
+sloplint: 2 FAIL, 1 REFLEX, 0 WARN across 20 file(s) and 1 URL(s), grouped by gate; every line is in .hallmark/before.txt.
+before: recorded 8 links, 3 fields, 33 handlers, 0 test hooks, 0 script hooks and 1 rendered page(s) in .hallmark/before.json; --kept checks a redesign against it

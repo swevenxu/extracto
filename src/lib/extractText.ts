@@ -22,5 +22,9 @@ export async function extractTextFromFile(
     }
   }
 
+  if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
+    return ""; // no text layer; vision extraction handles these
+  }
+
   return buf.toString("utf-8").trim();
 }

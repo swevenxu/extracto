@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/Sidebar";
+import { TopNav } from "@/components/TopNav";
 import { currentUser } from "@/lib/session";
 import { redirect } from "next/navigation";
 
@@ -10,7 +10,7 @@ export default async function MainLayout({
   if (!(await currentUser())) redirect("/login");
   return (
     <div className="min-h-screen">
-      <Sidebar />
+      <TopNav />
       <main id="main-content">{children}</main>
     </div>
   );

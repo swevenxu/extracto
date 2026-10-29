@@ -42,12 +42,12 @@ export default function LoginPage() {
           <h1 className="mt-2 text-2xl font-medium text-ink">{mode === "signin" ? "Sign in" : "Create your account"}</h1>
           <p className="mt-1 text-sm text-muted">Manage and review your document extractions.</p>
         </div>
-        {mode === "signup" && <label className="grid gap-1 text-sm text-ink-2">Name<input name="name" autoComplete="name" maxLength={80} className="field-control" /></label>}
-        <label className="grid gap-1 text-sm text-ink-2">Email<input name="email" type="email" autoComplete="email" required className="field-control" /></label>
-        <label className="grid gap-1 text-sm text-ink-2">Password<input name="password" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} minLength={10} maxLength={200} required className="field-control" /></label>
+        {mode === "signup" && <label className="grid"><span className="field-label">Name</span><input name="name" autoComplete="name" maxLength={80} className="field-control" /></label>}
+        <label className="grid"><span className="field-label">Email</span><input name="email" type="email" autoComplete="email" required className="field-control" /></label>
+        <label className="grid"><span className="field-label">Password</span><input name="password" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} minLength={10} maxLength={200} required className="field-control" /></label>
         {error && <p role="alert" className="text-sm text-error">{error}</p>}
         <button disabled={busy} className="btn-primary w-full">{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}</button>
-        <p className="text-center text-sm text-muted">{mode === "signin" ? "New to Extracto?" : "Already have an account?"}{" "}<button type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} className="font-medium text-accent underline">{mode === "signin" ? "Create an account" : "Sign in"}</button></p>
+        <p className="flex flex-wrap items-center justify-center gap-1 text-center text-sm text-muted">{mode === "signin" ? "New to Extracto?" : "Already have an account?"}{" "}<button type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} className="btn-quiet text-accent underline">{mode === "signin" ? "Create an account" : "Sign in"}</button></p>
       </form>
     </main>
   );

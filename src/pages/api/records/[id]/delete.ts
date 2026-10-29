@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { currentUserFromCookie } from "@/lib/session";
+import { getActiveWorkspace, getRecord } from "@/lib/storage";
 import { deleteRecord } from "@/lib/storage";
+import { recordActivity } from "@/lib/audit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const user = await currentUserFromCookie(req.headers.cookie);
@@ -21,11 +23,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const deleted = deleteRecord(id, user.id);
-  if (!deleted) {
+  const workspace = getActiveWorkspace(user);
+  const record = getRecord(id, workspace.id);
+  if (!record) {
     res.status(404).json({ error: "Record not found" });
     return;
   }
+
+  if (!deleteRecord(id, workspace.id)) {
+    res.status(404).json({ error: "Record not found" });
+    return;
+  }
+
+  recordActivity({
+    workspaceId: workspace.id,
+    record,
+    actor: user,
+    type: "deleted",
+    summary: `Deleted ${record.fileName}`,
+  });
 
   res.status(200).json({ success: true });
 }

@@ -66,7 +66,7 @@ export function CurrencySettings() {
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="grid gap-1 text-sm">
+        <label className="grid w-40 gap-1 text-sm">
           <span className="text-muted">Base currency</span>
           <select
             className="field-control field-control-select"

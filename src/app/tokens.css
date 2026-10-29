@@ -32,6 +32,8 @@
   --color-cool-soft: oklch(95% 0.028 256);
   --color-ok: oklch(43% 0.13 150);
   --color-ok-soft: oklch(94% 0.035 150);
+  --color-warn: oklch(55% 0.13 72);
+  --color-warn-soft: oklch(96% 0.05 85);
   --color-bad: oklch(46% 0.16 27);
   --color-bad-soft: oklch(94% 0.04 25);
   --font-display: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
