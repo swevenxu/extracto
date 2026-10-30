@@ -1,8 +1,9 @@
+import type { NextApiRequest, NextApiResponse } from "next";
 import { getActiveWorkspace, listRecordsByWorkspace, workspaceMembers, workspaceRole } from "@/lib/storage";
 import { currentUserFromCookie } from "@/lib/session";
 
 /** Records and members of the active workspace. */
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.status(405).json({ error: "Method not allowed" });
     return;

@@ -1,9 +1,10 @@
+import type { NextApiRequest, NextApiResponse } from "next";
 import { retryExtraction } from "@/lib/retry";
 import { currentUserFromCookie } from "@/lib/session";
 
 export const config = { api: { bodyParser: false } };
 
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const id = String(req.query.id || "");
   if (!id) {
     res.status(400).json({ error: "Missing record id" });
