@@ -466,8 +466,23 @@ select {
 }
 
 @media (max-width: 40rem) {
-  .top-nav { gap: var(--space-sm); }
+  .top-nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-xs) var(--space-sm);
+  }
   .brand-logo img { width: 124px; }
+  .nav-brand { grid-column: 1; grid-row: 1; }
+  .nav-secondary { grid-column: 2; grid-row: 1; gap: var(--space-2xs); }
+  .nav-secondary .nav-link-secondary { padding-inline: var(--space-sm); }
+  .nav-primary {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    border-top: 1px solid var(--color-rule);
+    padding-top: var(--space-xs);
+  }
+  .nav-evidence { display: none; }
   .page-shell { padding-inline: var(--space-md); }
   .page-heading { align-items: flex-start; flex-direction: column; }
   .page-heading h1 { font-size: var(--text-xl); }

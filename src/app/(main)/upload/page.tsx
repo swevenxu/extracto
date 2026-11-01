@@ -12,7 +12,7 @@ export default async function UploadPage() {
     <div className="page-column">
       <header className="page-heading"><div><h1>Upload documents</h1><p>Extract invoice, receipt, or bank statement fields in batches, then check each one before export.</p></div></header>
       <UploadZone usage={usage} />
-      <p className="mt-4 max-w-prose text-sm text-muted">PDF, TXT, or image (JPG, PNG, WebP), up to {usage?.maxFileMb ?? 8} MB each. Each type gets its own fields, so pick one above or let Extracto detect it. Every file in a batch shows its own progress and can be retried on its own. Find results in <Link href="/documents" className="text-accent underline">Documents</Link>.</p>
+      <p className="mt-4 max-w-prose text-sm text-muted">PDF, TXT, or image (JPG, PNG, WebP), up to {usage?.maxFileMb ?? 8} MB each. Choose a type above or let Extracto detect it. Files can be retried individually. Find results in <Link href="/documents" className="text-accent underline">Documents</Link>.</p>
     </div>
   </main>;
 }
