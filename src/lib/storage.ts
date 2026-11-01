@@ -1,554 +1,59 @@
-import fs from "fs";
-import path from "path";
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "crypto";
-import type {
-  ActivityEvent,
-  Currency,
-  ExportMode,
-  ExportPreset,
-  ExtractedRecord,
-  User,
-  UserPreferences,
-  Workspace,
-  WorkspaceMemberView,
-  WorkspaceRole,
-} from "./types";
+import { randomUUID, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { getSupabaseAdmin } from "./supabase";
+import type { ActivityEvent, Currency, ExportMode, ExportPreset, ExtractedRecord, User, UserPreferences, Workspace, WorkspaceMemberView, WorkspaceRole } from "./types";
 import { isDocType, presetFor } from "./docTypes";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const RECORDS_FILE = path.join(DATA_DIR, "records.json");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
-const PREFERENCES_FILE = path.join(DATA_DIR, "preferences.json");
-const EXPORTS_FILE = path.join(DATA_DIR, "exports.json");
-const WORKSPACES_FILE = path.join(DATA_DIR, "workspaces.json");
-const ACTIVITY_FILE = path.join(DATA_DIR, "activity.json");
-
-/** Saved export configurations allowed per user. */
 export const MAX_EXPORT_PRESETS = 20;
-/** History entries kept across all workspaces (oldest are dropped). */
 export const MAX_ACTIVITY_EVENTS = 5000;
-/** Workspaces a user may create. */
 export const MAX_WORKSPACES_PER_USER = 10;
-
-function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-const text = (value: unknown, max = 500) => (typeof value === "string" ? value.slice(0, max) : "");
-
-/** Deterministic id for a user's private workspace, so legacy records map without a lookup. */
-export function personalWorkspaceId(userId: string): string {
-  return `ws-personal-${userId}`;
-}
-const number = (value: unknown) => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
-
-/**
- * Records written before document presets existed are invoice-shaped: lift their
- * top-level fields and line items into the generic `fields`/`rows` model.
- */
-function normalizeRecord(raw: unknown): ExtractedRecord {
-  const value = raw as Record<string, unknown>;
-  // Records made before workspaces existed belong to their uploader's private workspace.
-  const ownerId = text(value.userId);
-  const meta = {
-    workspaceId: text(value.workspaceId) || (ownerId ? personalWorkspaceId(ownerId) : "ws-unowned"),
-    assigneeId: typeof value.assigneeId === "string" && value.assigneeId ? value.assigneeId : undefined,
-    updatedBy: typeof value.updatedBy === "string" && value.updatedBy ? value.updatedBy : undefined,
-    updatedAt: typeof value.updatedAt === "string" && value.updatedAt ? value.updatedAt : undefined,
-  };
-  if (isDocType(value.docType) && value.fields && typeof value.fields === "object") {
-    return { ...value, ...meta, rows: Array.isArray(value.rows) ? value.rows : [] } as unknown as ExtractedRecord;
-  }
-
-  const preset = presetFor("invoice");
-  const fields: Record<string, string | number> = Object.fromEntries(
-    preset.fields.map((field) => [field.key, field.kind === "number" ? number(value[field.key]) : text(value[field.key])])
-  );
-  if (!fields.currency) fields.currency = "USD";
-  const rows = (Array.isArray(value.lineItems) ? value.lineItems : []).map((item) => {
-    const line = item as Record<string, unknown>;
-    return {
-      description: text(line.description, 500),
-      quantity: number(line.quantity),
-      unitPrice: number(line.unitPrice),
-      amount: number(line.amount),
-    };
-  });
-
-  return {
-    ...meta,
-    id: text(value.id),
-    userId: text(value.userId),
-    fileName: text(value.fileName),
-    fileUrl: typeof value.fileUrl === "string" ? value.fileUrl : undefined,
-    fileSize: number(value.fileSize),
-    uploadedAt: text(value.uploadedAt),
-    docType: "invoice",
-    fields,
-    rows,
-    status: (value.status as ExtractedRecord["status"]) ?? "extracted",
-    rawText: typeof value.rawText === "string" ? value.rawText : undefined,
-    extractionError: typeof value.extractionError === "string" ? value.extractionError : undefined,
-    demoMode: typeof value.demoMode === "boolean" ? value.demoMode : undefined,
-  };
-}
-
-function readAll(): ExtractedRecord[] {
-  ensureDir();
-  if (!fs.existsSync(RECORDS_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(RECORDS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(normalizeRecord) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeAll(records: ExtractedRecord[]) {
-  ensureDir();
-  fs.writeFileSync(RECORDS_FILE, JSON.stringify(records, null, 2), "utf-8");
-}
-
-export function listRecords(): ExtractedRecord[] {
-  return readAll().sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : -1));
-}
-
-export function listRecordsByWorkspace(workspaceId: string): ExtractedRecord[] {
-  return readAll()
-    .filter((r) => r.workspaceId === workspaceId)
-    .sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : -1));
-}
-
-export function getRecord(id: string, workspaceId?: string): ExtractedRecord | undefined {
-  const rec = readAll().find((r) => r.id === id);
-  if (!rec) return undefined;
-  if (workspaceId && rec.workspaceId !== workspaceId) return undefined;
-  return rec;
-}
-
-export function updateRecord(
-  id: string,
-  patch: Partial<ExtractedRecord>,
-  workspaceId?: string
-): ExtractedRecord | undefined {
-  const records = readAll();
-  const idx = records.findIndex((r) => r.id === id);
-  if (idx < 0) return undefined;
-  if (workspaceId && records[idx].workspaceId !== workspaceId) return undefined;
-  records[idx] = { ...records[idx], ...patch, id };
-  writeAll(records);
-  return records[idx];
-}
-
-export function upsertRecord(record: ExtractedRecord): ExtractedRecord {
-  const records = readAll();
-  const idx = records.findIndex((r) => r.id === record.id);
-  if (idx >= 0) records[idx] = record;
-  else records.push(record);
-  writeAll(records);
-  return record;
-}
-
-export function deleteRecord(id: string, workspaceId?: string): boolean {
-  const records = readAll();
-  const idx = records.findIndex(
-    (r) => r.id === id && (!workspaceId || r.workspaceId === workspaceId)
-  );
-  if (idx < 0) return false;
-  const next = records.filter((_, i) => i !== idx);
-  writeAll(next);
-  return true;
-}
-
-export function readUsers(): User[] {
-  ensureDir();
-  if (!fs.existsSync(USERS_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(USERS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-export function writeUsers(users: User[]) {
-  ensureDir();
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
-}
-
-export function findUserByEmail(email: string): User | undefined {
-  return readUsers().find((u) => u.email.toLowerCase() === email.toLowerCase());
-}
-
-export function authenticateUser(email: string, password: string): User | undefined {
-  const user = readUsers().find((u) => u.email.toLowerCase() === email.toLowerCase()) as (User & { passwordHash?: string }) | undefined;
-  if (!user?.passwordHash) return undefined;
-  const [salt, hash] = user.passwordHash.split(":");
-  if (!salt || !hash) return undefined;
-  const actual = scryptSync(password, salt, 64);
-  const expected = Buffer.from(hash, "hex");
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return undefined;
-  return { id: user.id, email: user.email, name: user.name };
-}
-
-export function createUser(email: string, name: string, password: string): User {
-  const users = readUsers();
-  if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-    throw new Error("User already exists");
-  }
-  const user: User = { id: crypto.randomUUID(), email: email.toLowerCase(), name };
-  const salt = randomBytes(16).toString("hex");
-  const passwordHash = `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
-  writeUsers([...users, { ...user, passwordHash } as User]);
-  return user;
-}
-
-export { readAll as readAllRecords };
-
-function readPreferences(): UserPreferences[] {
-  ensureDir();
-  if (!fs.existsSync(PREFERENCES_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(PREFERENCES_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writePreferences(preferences: UserPreferences[]) {
-  ensureDir();
-  fs.writeFileSync(PREFERENCES_FILE, JSON.stringify(preferences, null, 2), "utf-8");
-}
-
-export function getPreferences(userId: string): UserPreferences | undefined {
-  return readPreferences().find((p) => p.userId === userId);
-}
-
-export function getOrCreatePreferences(userId: string): UserPreferences {
-  const existing = getPreferences(userId);
-  if (existing) return existing;
-
-  const newPrefs: UserPreferences = {
-    id: randomUUID(),
-    userId,
-    baseCurrency: "USD" as Currency,
-    locale: "en-US",
-    plan: "free",
-  };
-  const all = readPreferences();
-  writePreferences([...all, newPrefs]);
-  return newPrefs;
-}
-
-export function updatePreferences(userId: string, patch: Partial<UserPreferences>): UserPreferences {
-  const all = readPreferences();
-  const idx = all.findIndex((p) => p.userId === userId);
-  if (idx >= 0) {
-    all[idx] = { ...all[idx], ...patch };
-    writePreferences(all);
-    return all[idx];
-  }
-
-  // Create new preferences if none exist
-  const newPrefs = getOrCreatePreferences(userId);
-  return updatePreferences(userId, patch);
-}
-
-function readExportPresets(): ExportPreset[] {
-  ensureDir();
-  if (!fs.existsSync(EXPORTS_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(EXPORTS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeExportPresets(presets: ExportPreset[]) {
-  ensureDir();
-  fs.writeFileSync(EXPORTS_FILE, JSON.stringify(presets, null, 2), "utf-8");
-}
-
-export function listExportPresets(userId: string): ExportPreset[] {
-  return readExportPresets()
-    .filter((preset) => preset.userId === userId)
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export function getExportPreset(id: string, userId: string): ExportPreset | undefined {
-  return readExportPresets().find((preset) => preset.id === id && preset.userId === userId);
-}
-
-export function saveExportPreset(input: {
-  id?: string;
-  userId: string;
-  name: string;
-  spreadsheetId: string;
-  mapping: Record<string, string>;
-  mode: ExportMode;
-  sheetName?: string;
-}): ExportPreset {
-  const presets = readExportPresets();
-  const now = new Date().toISOString();
-
-  if (input.id) {
-    const index = presets.findIndex((preset) => preset.id === input.id && preset.userId === input.userId);
-    if (index < 0) throw new Error("Saved export not found");
-    presets[index] = {
-      ...presets[index],
-      name: input.name,
-      spreadsheetId: input.spreadsheetId,
-      mapping: input.mapping,
-      mode: input.mode,
-      sheetName: input.sheetName,
-      updatedAt: now,
-    };
-    writeExportPresets(presets);
-    return presets[index];
-  }
-
-  if (presets.filter((preset) => preset.userId === input.userId).length >= MAX_EXPORT_PRESETS) {
-    throw new Error(`You can save up to ${MAX_EXPORT_PRESETS} exports`);
-  }
-
-  const preset: ExportPreset = {
-    id: randomUUID(),
-    userId: input.userId,
-    name: input.name,
-    spreadsheetId: input.spreadsheetId,
-    mapping: input.mapping,
-    mode: input.mode,
-    sheetName: input.sheetName,
-    createdAt: now,
-    updatedAt: now,
-  };
-  writeExportPresets([...presets, preset]);
-  return preset;
-}
-
-export function deleteExportPreset(id: string, userId: string): boolean {
-  const presets = readExportPresets();
-  const remaining = presets.filter((preset) => !(preset.id === id && preset.userId === userId));
-  if (remaining.length === presets.length) return false;
-  writeExportPresets(remaining);
-  return true;
-}
-
-/* ------------------------------------------------------------------ *
- * Workspaces: shared containers for documents, with members and roles.
- * ------------------------------------------------------------------ */
-
 export const MAX_WORKSPACE_MEMBERS = 20;
 
-function readWorkspaces(): Workspace[] {
-  ensureDir();
-  if (!fs.existsSync(WORKSPACES_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(WORKSPACES_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+type Row = Record<string, any>;
+const db = () => getSupabaseAdmin();
+const userFrom = (r: Row): User => ({ id: r.id, email: r.email, name: r.name, ...(r.password_hash ? { passwordHash: r.password_hash } : {}), ...(r.google_tokens ? { googleToken: r.google_tokens } : {}) } as User);
+const recordFrom = (r: Row): ExtractedRecord => ({ id: r.id, userId: r.user_id, workspaceId: r.workspace_id, assigneeId: r.assignee_id ?? undefined, updatedBy: r.updated_by ?? undefined, updatedAt: r.updated_at ?? undefined, fileName: r.file_name, fileUrl: r.file_url ?? undefined, fileSize: Number(r.file_size ?? 0), uploadedAt: r.uploaded_at, docType: isDocType(r.doc_type) ? r.doc_type : "invoice", fields: r.fields ?? {}, rows: Array.isArray(r.rows) ? r.rows : [], status: r.status, rawText: r.raw_text ?? undefined, extractionError: r.extraction_error ?? undefined, demoMode: r.demo_mode ?? undefined });
+const prefsFrom = (r: Row): UserPreferences => ({ id: r.id, userId: r.user_id, baseCurrency: r.base_currency as Currency, locale: r.locale, activeWorkspaceId: r.active_workspace_id ?? undefined, plan: r.plan });
+const presetFrom = (r: Row): ExportPreset => ({ id: r.id, userId: r.user_id, name: r.name, spreadsheetId: r.spreadsheet_id, mapping: r.mapping ?? {}, mode: r.mode, sheetName: r.sheet_name ?? undefined, createdAt: r.created_at, updatedAt: r.updated_at });
+const workspaceFrom = (r: Row, members: Workspace["members"] = []): Workspace => ({ id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, members });
 
-function writeWorkspaces(workspaces: Workspace[]) {
-  ensureDir();
-  fs.writeFileSync(WORKSPACES_FILE, JSON.stringify(workspaces, null, 2), "utf-8");
-}
+export function personalWorkspaceId(userId: string): string { return `ws-personal-${userId}`; }
 
-export function ensurePersonalWorkspace(user: User): Workspace {
-  const id = personalWorkspaceId(user.id);
-  const workspaces = readWorkspaces();
-  const existing = workspaces.find((workspace) => workspace.id === id);
-  if (existing) return existing;
+export async function listRecords(): Promise<ExtractedRecord[]> { const { data, error } = await db().from("document_records").select("*").order("uploaded_at", { ascending: false }); if (error) throw error; return (data ?? []).map(recordFrom); }
+export async function readAllRecords(): Promise<ExtractedRecord[]> { return listRecords(); }
+export async function listRecordsByWorkspace(workspaceId: string): Promise<ExtractedRecord[]> { const { data, error } = await db().from("document_records").select("*").eq("workspace_id", workspaceId).order("uploaded_at", { ascending: false }); if (error) throw error; return (data ?? []).map(recordFrom); }
+export async function getRecord(id: string, workspaceId?: string): Promise<ExtractedRecord | undefined> { let q = db().from("document_records").select("*").eq("id", id); if (workspaceId) q = q.eq("workspace_id", workspaceId); const { data, error } = await q.maybeSingle(); if (error) throw error; return data ? recordFrom(data) : undefined; }
+const recordTo = (r: ExtractedRecord): Row => ({ id: r.id, user_id: r.userId, workspace_id: r.workspaceId, assignee_id: r.assigneeId ?? null, updated_by: r.updatedBy ?? null, updated_at: r.updatedAt ?? null, file_name: r.fileName, file_url: r.fileUrl ?? null, file_size: r.fileSize, uploaded_at: r.uploadedAt, doc_type: r.docType, fields: r.fields, rows: r.rows, status: r.status, raw_text: r.rawText ?? null, extraction_error: r.extractionError ?? null, demo_mode: r.demoMode ?? null });
+export async function updateRecord(id: string, patch: Partial<ExtractedRecord>, workspaceId?: string): Promise<ExtractedRecord | undefined> { const existing = await getRecord(id, workspaceId); if (!existing) return undefined; const merged = { ...existing, ...patch, id }; const { data, error } = await db().from("document_records").update(recordTo(merged)).eq("id", id).select().maybeSingle(); if (error) throw error; return data ? recordFrom(data) : undefined; }
+export async function upsertRecord(record: ExtractedRecord): Promise<ExtractedRecord> { const { data, error } = await db().from("document_records").upsert(recordTo(record)).select().single(); if (error) throw error; return recordFrom(data); }
+export async function deleteRecord(id: string, workspaceId?: string): Promise<boolean> { let q = db().from("document_records").delete().eq("id", id); if (workspaceId) q = q.eq("workspace_id", workspaceId); const { data, error } = await q.select("id"); if (error) throw error; return (data ?? []).length > 0; }
 
-  const now = new Date().toISOString();
-  const workspace: Workspace = {
-    id,
-    name: "Personal workspace",
-    createdBy: user.id,
-    createdAt: now,
-    members: [{ userId: user.id, role: "owner", joinedAt: now }],
-  };
-  writeWorkspaces([...workspaces, workspace]);
-  return workspace;
-}
+export async function readUsers(): Promise<User[]> { const { data, error } = await db().from("app_users").select("*"); if (error) throw error; return (data ?? []).map(userFrom); }
+export async function writeUsers(users: Array<User & { passwordHash?: string; googleToken?: string }>): Promise<void> { for (const user of users) { const row: Row = { id: user.id, email: user.email, name: user.name }; if (user.passwordHash !== undefined) row.password_hash = user.passwordHash; row.google_tokens = user.googleToken ?? null; const { error } = await db().from("app_users").upsert(row); if (error) throw error; } }
+export async function findUserByEmail(email: string): Promise<User | undefined> { const { data, error } = await db().from("app_users").select("*").ilike("email", email).maybeSingle(); if (error) throw error; return data ? userFrom(data) : undefined; }
+export async function authenticateUser(email: string, password: string): Promise<User | undefined> { const { data, error } = await db().from("app_users").select("*").ilike("email", email).maybeSingle(); if (error) throw error; if (!data?.password_hash) return undefined; const [salt, hash] = data.password_hash.split(":"); if (!salt || !hash) return undefined; const actual = scryptSync(password, salt, 64), expected = Buffer.from(hash, "hex"); return actual.length === expected.length && timingSafeEqual(actual, expected) ? userFrom(data) : undefined; }
+export async function createUser(email: string, name: string, password: string): Promise<User> { const user: User = { id: randomUUID(), email: email.toLowerCase(), name }; const salt = randomBytes(16).toString("hex"); const { data, error } = await db().from("app_users").insert({ ...user, password_hash: `${salt}:${scryptSync(password, salt, 64).toString("hex")}` }).select().single(); if (error) { if (error.code === "23505") throw new Error("User already exists"); throw error; } return userFrom(data); }
 
-export function listWorkspacesForUser(user: User): Workspace[] {
-  const personalId = personalWorkspaceId(user.id);
-  ensurePersonalWorkspace(user);
-  return readWorkspaces()
-    .filter((workspace) => workspace.members.some((member) => member.userId === user.id))
-    .sort((a, b) => {
-      if (a.id === personalId) return -1;
-      if (b.id === personalId) return 1;
-      return a.name.localeCompare(b.name);
-    });
-}
+export async function getPreferences(userId: string): Promise<UserPreferences | undefined> { const { data, error } = await db().from("user_preferences").select("*").eq("user_id", userId).maybeSingle(); if (error) throw error; return data ? prefsFrom(data) : undefined; }
+export async function getOrCreatePreferences(userId: string): Promise<UserPreferences> { const existing = await getPreferences(userId); if (existing) return existing; const { data, error } = await db().from("user_preferences").insert({ id: randomUUID(), user_id: userId, base_currency: "USD", locale: "en-US", plan: "free" }).select().single(); if (error) throw error; return prefsFrom(data); }
+export async function updatePreferences(userId: string, patch: Partial<UserPreferences>): Promise<UserPreferences> { const current = await getOrCreatePreferences(userId); const row: Row = {}; if (patch.baseCurrency !== undefined) row.base_currency = patch.baseCurrency; if (patch.locale !== undefined) row.locale = patch.locale; if (patch.activeWorkspaceId !== undefined) row.active_workspace_id = patch.activeWorkspaceId; if (patch.plan !== undefined) row.plan = patch.plan; const { data, error } = await db().from("user_preferences").update(row).eq("id", current.id).select().single(); if (error) throw error; return prefsFrom(data); }
 
-export function getWorkspace(id: string): Workspace | undefined {
-  return readWorkspaces().find((workspace) => workspace.id === id);
-}
+export async function listExportPresets(userId: string): Promise<ExportPreset[]> { const { data, error } = await db().from("export_presets").select("*").eq("user_id", userId).order("name"); if (error) throw error; return (data ?? []).map(presetFrom); }
+export async function getExportPreset(id: string, userId: string): Promise<ExportPreset | undefined> { const { data, error } = await db().from("export_presets").select("*").eq("id", id).eq("user_id", userId).maybeSingle(); if (error) throw error; return data ? presetFrom(data) : undefined; }
+export async function saveExportPreset(input: { id?: string; userId: string; name: string; spreadsheetId: string; mapping: Record<string,string>; mode: ExportMode; sheetName?: string }): Promise<ExportPreset> { const now = new Date().toISOString(); if (input.id && !(await getExportPreset(input.id, input.userId))) throw new Error("Saved export not found"); if (!input.id && (await listExportPresets(input.userId)).length >= MAX_EXPORT_PRESETS) throw new Error(`You can save up to ${MAX_EXPORT_PRESETS} exports`); const row = { id: input.id ?? randomUUID(), user_id: input.userId, name: input.name, spreadsheet_id: input.spreadsheetId, mapping: input.mapping, mode: input.mode, sheet_name: input.sheetName ?? null, created_at: now, updated_at: now }; const { data, error } = await db().from("export_presets").upsert(row).select().single(); if (error) throw error; return presetFrom(data); }
+export async function deleteExportPreset(id: string, userId: string): Promise<boolean> { const { data, error } = await db().from("export_presets").delete().eq("id", id).eq("user_id", userId).select("id"); if (error) throw error; return (data ?? []).length > 0; }
 
-export function getWorkspaceForUser(id: string, userId: string): Workspace | undefined {
-  const workspace = getWorkspace(id);
-  if (!workspace) return undefined;
-  return workspace.members.some((member) => member.userId === userId) ? workspace : undefined;
-}
+async function membersFor(workspaceId: string): Promise<Workspace["members"]> { const { data, error } = await db().from("workspace_members").select("*").eq("workspace_id", workspaceId); if (error) throw error; return (data ?? []).map((r: Row) => ({ userId: r.user_id, role: r.role as WorkspaceRole, joinedAt: r.joined_at })); }
+export async function getWorkspace(id: string): Promise<Workspace | undefined> { const { data, error } = await db().from("workspaces").select("*").eq("id", id).maybeSingle(); if (error) throw error; return data ? workspaceFrom(data, await membersFor(id)) : undefined; }
+export async function getWorkspaceForUser(id: string, userId: string): Promise<Workspace | undefined> { const workspace = await getWorkspace(id); return workspace?.members.some(m => m.userId === userId) ? workspace : undefined; }
+export function workspaceRole(workspace: Workspace, userId: string): WorkspaceRole | undefined { return workspace.members.find(m => m.userId === userId)?.role; }
+export async function ensurePersonalWorkspace(user: User): Promise<Workspace> { const id = personalWorkspaceId(user.id); const existing = await getWorkspace(id); if (existing) return existing; const now = new Date().toISOString(); const { data, error } = await db().from("workspaces").insert({ id, name: "Personal workspace", created_by: user.id, created_at: now }).select().single(); if (error && error.code !== "23505") throw error; const workspace = data ? workspaceFrom(data) : await getWorkspace(id); if (!workspace) throw new Error("Unable to create personal workspace"); await db().from("workspace_members").upsert({ workspace_id: id, user_id: user.id, role: "owner", joined_at: now }); return { ...workspace, members: await membersFor(id) }; }
+export async function listWorkspacesForUser(user: User): Promise<Workspace[]> { const personal = await ensurePersonalWorkspace(user); const { data, error } = await db().from("workspace_members").select("workspace_id").eq("user_id", user.id); if (error) throw error; const workspaces = await Promise.all((data ?? []).map((r: Row) => getWorkspace(r.workspace_id))); return workspaces.filter((w): w is Workspace => Boolean(w)).sort((a,b) => a.id === personal.id ? -1 : b.id === personal.id ? 1 : a.name.localeCompare(b.name)); }
+export async function getActiveWorkspace(user: User): Promise<Workspace> { const personal = await ensurePersonalWorkspace(user); const prefs = await getOrCreatePreferences(user.id); const active = prefs.activeWorkspaceId ? await getWorkspaceForUser(prefs.activeWorkspaceId, user.id) : undefined; if (active) return active; if (prefs.activeWorkspaceId !== personal.id) await updatePreferences(user.id, { activeWorkspaceId: personal.id }); return personal; }
+export async function setActiveWorkspace(userId: string, workspaceId: string): Promise<boolean> { const { data: user } = await db().from("app_users").select("id").eq("id", userId).maybeSingle(); if (!user || !(await getWorkspaceForUser(workspaceId, userId))) return false; await updatePreferences(userId, { activeWorkspaceId: workspaceId }); return true; }
+export async function createWorkspace(name: string, owner: User): Promise<Workspace> { const owned = (await listWorkspacesForUser(owner)).filter(w => workspaceRole(w, owner.id) === "owner").length; if (owned >= MAX_WORKSPACES_PER_USER) throw new Error(`You can own up to ${MAX_WORKSPACES_PER_USER} workspaces`); const now = new Date().toISOString(), id = randomUUID(); const { data, error } = await db().from("workspaces").insert({ id, name, created_by: owner.id, created_at: now }).select().single(); if (error) throw error; await db().from("workspace_members").insert({ workspace_id: id, user_id: owner.id, role: "owner", joined_at: now }); return workspaceFrom(data, [{ userId: owner.id, role: "owner", joinedAt: now }]); }
+export async function addWorkspaceMember(workspaceId: string, actorUserId: string, email: string): Promise<Workspace> { const workspace = await getWorkspace(workspaceId); if (!workspace) throw new Error("Workspace not found"); if (workspaceRole(workspace, actorUserId) !== "owner") throw new Error("Only a workspace owner can manage members"); if (workspace.members.length >= MAX_WORKSPACE_MEMBERS) throw new Error(`A workspace can have up to ${MAX_WORKSPACE_MEMBERS} members`); const user = await findUserByEmail(email); if (!user) throw new Error("No account uses that email yet — ask them to sign up first"); if (workspace.members.some(m => m.userId === user.id)) throw new Error(`${user.name} is already a member`); const { error } = await db().from("workspace_members").insert({ workspace_id: workspaceId, user_id: user.id, role: "reviewer", joined_at: new Date().toISOString() }); if (error) throw error; return (await getWorkspace(workspaceId))!; }
+export async function removeWorkspaceMember(workspaceId: string, actorUserId: string, memberUserId: string): Promise<Workspace> { const workspace = await getWorkspace(workspaceId); if (!workspace) throw new Error("Workspace not found"); if (workspaceRole(workspace, actorUserId) !== "owner") throw new Error("Only a workspace owner can manage members"); const target = workspace.members.find(m => m.userId === memberUserId); if (!target) throw new Error("They are not a member of this workspace"); if (target.role === "owner") throw new Error("Workspace owners cannot be removed"); const { error } = await db().from("workspace_members").delete().eq("workspace_id", workspaceId).eq("user_id", memberUserId); if (error) throw error; await db().from("document_records").update({ assignee_id: null }).eq("workspace_id", workspaceId).eq("assignee_id", memberUserId); return (await getWorkspace(workspaceId))!; }
+export async function workspaceMembers(workspaceId: string): Promise<WorkspaceMemberView[]> { const workspace = await getWorkspace(workspaceId); if (!workspace) return []; const ids = workspace.members.map(m => m.userId); const { data, error } = await db().from("app_users").select("id,name,email").in("id", ids); if (error) throw error; return workspace.members.map(m => ({ ...m, name: (data ?? []).find((u: Row) => u.id === m.userId)?.name ?? "Former member", email: (data ?? []).find((u: Row) => u.id === m.userId)?.email ?? "" })).sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : a.role === "owner" ? -1 : 1); }
 
-export function workspaceRole(workspace: Workspace, userId: string): WorkspaceRole | undefined {
-  return workspace.members.find((member) => member.userId === userId)?.role;
-}
-
-export function createWorkspace(name: string, owner: User): Workspace {
-  const workspaces = readWorkspaces();
-  const owned = workspaces.filter((workspace) =>
-    workspace.members.some((member) => member.userId === owner.id && member.role === "owner")
-  ).length;
-  if (owned >= MAX_WORKSPACES_PER_USER) {
-    throw new Error(`You can own up to ${MAX_WORKSPACES_PER_USER} workspaces`);
-  }
-
-  const now = new Date().toISOString();
-  const workspace: Workspace = {
-    id: randomUUID(),
-    name,
-    createdBy: owner.id,
-    createdAt: now,
-    members: [{ userId: owner.id, role: "owner", joinedAt: now }],
-  };
-  writeWorkspaces([...workspaces, workspace]);
-  return workspace;
-}
-
-export function addWorkspaceMember(workspaceId: string, actorUserId: string, email: string): Workspace {
-  const workspaces = readWorkspaces();
-  const index = workspaces.findIndex((workspace) => workspace.id === workspaceId);
-  if (index < 0) throw new Error("Workspace not found");
-  if (workspaceRole(workspaces[index], actorUserId) !== "owner") {
-    throw new Error("Only a workspace owner can manage members");
-  }
-  if (workspaces[index].members.length >= MAX_WORKSPACE_MEMBERS) {
-    throw new Error(`A workspace can have up to ${MAX_WORKSPACE_MEMBERS} members`);
-  }
-
-  const user = findUserByEmail(email);
-  if (!user) throw new Error("No account uses that email yet — ask them to sign up first");
-  if (workspaces[index].members.some((member) => member.userId === user.id)) {
-    throw new Error(`${user.name} is already a member`);
-  }
-
-  workspaces[index] = {
-    ...workspaces[index],
-    members: [...workspaces[index].members, { userId: user.id, role: "reviewer", joinedAt: new Date().toISOString() }],
-  };
-  writeWorkspaces(workspaces);
-  return workspaces[index];
-}
-
-export function removeWorkspaceMember(workspaceId: string, actorUserId: string, memberUserId: string): Workspace {
-  const workspaces = readWorkspaces();
-  const index = workspaces.findIndex((workspace) => workspace.id === workspaceId);
-  if (index < 0) throw new Error("Workspace not found");
-  if (workspaceRole(workspaces[index], actorUserId) !== "owner") {
-    throw new Error("Only a workspace owner can manage members");
-  }
-  const target = workspaces[index].members.find((member) => member.userId === memberUserId);
-  if (!target) throw new Error("They are not a member of this workspace");
-  if (target.role === "owner") throw new Error("Workspace owners cannot be removed");
-
-  workspaces[index] = {
-    ...workspaces[index],
-    members: workspaces[index].members.filter((member) => member.userId !== memberUserId),
-    // Their assignments fall back to "unassigned" rather than pointing at a non-member.
-  };
-  writeWorkspaces(workspaces);
-
-  const records = readAll();
-  let changed = false;
-  for (const record of records) {
-    if (record.workspaceId === workspaceId && record.assigneeId === memberUserId) {
-      record.assigneeId = undefined;
-      changed = true;
-    }
-  }
-  if (changed) writeAll(records);
-
-  return workspaces[index];
-}
-
-export function workspaceMembers(workspaceId: string): WorkspaceMemberView[] {
-  const workspace = getWorkspace(workspaceId);
-  if (!workspace) return [];
-  const users = readUsers();
-  return workspace.members
-    .map((member) => {
-      const user = users.find((candidate) => candidate.id === member.userId);
-      return { ...member, name: user?.name ?? "Former member", email: user?.email ?? "" };
-    })
-    .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === "owner" ? -1 : 1));
-}
-
-/** Active workspace from preferences, falling back to the user's personal one. */
-export function getActiveWorkspace(user: User): Workspace {
-  const personal = ensurePersonalWorkspace(user);
-  const prefs = getOrCreatePreferences(user.id);
-  const active = prefs.activeWorkspaceId ? getWorkspaceForUser(prefs.activeWorkspaceId, user.id) : undefined;
-  if (active) return active;
-  if (prefs.activeWorkspaceId !== personal.id) {
-    updatePreferences(user.id, { activeWorkspaceId: personal.id });
-  }
-  return personal;
-}
-
-export function setActiveWorkspace(userId: string, workspaceId: string): boolean {
-  if (!getWorkspaceForUser(workspaceId, userId)) return false;
-  updatePreferences(userId, { activeWorkspaceId: workspaceId });
-  return true;
-}
-
-/* ------------------------------------------------------- *
- * Activity: an append-only history of document changes.
- * ------------------------------------------------------- */
-
-function readActivity(): ActivityEvent[] {
-  ensureDir();
-  if (!fs.existsSync(ACTIVITY_FILE)) return [];
-  try {
-    const raw = fs.readFileSync(ACTIVITY_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeActivity(events: ActivityEvent[]) {
-  ensureDir();
-  fs.writeFileSync(ACTIVITY_FILE, JSON.stringify(events, null, 2), "utf-8");
-}
-
-export function appendActivity(event: Omit<ActivityEvent, "id" | "at">): ActivityEvent {
-  const entry: ActivityEvent = { ...event, id: randomUUID(), at: new Date().toISOString() };
-  writeActivity([...readActivity(), entry].slice(-MAX_ACTIVITY_EVENTS));
-  return entry;
-}
-
-export function listActivity(workspaceId: string, recordId?: string, limit = 50): ActivityEvent[] {
-  return readActivity()
-    .filter((event) => event.workspaceId === workspaceId && (!recordId || event.recordId === recordId))
-    .sort((a, b) => (a.at < b.at ? 1 : -1))
-    .slice(0, limit);
-}
+export async function appendActivity(event: Omit<ActivityEvent,"id"|"at">): Promise<ActivityEvent> { const entry = { ...event, id: randomUUID(), at: new Date().toISOString() }; const { error } = await db().from("activity_events").insert({ id: entry.id, workspace_id: entry.workspaceId, record_id: entry.recordId, record_name: entry.recordName, actor_id: entry.actorId, actor_name: entry.actorName, type: entry.type, summary: entry.summary, changes: entry.changes ?? null, at: entry.at }); if (error) throw error; return entry; }
+export async function listActivity(workspaceId: string, recordId?: string, limit = 50): Promise<ActivityEvent[]> { let q = db().from("activity_events").select("*").eq("workspace_id", workspaceId).order("at", { ascending: false }).limit(limit); if (recordId) q = q.eq("record_id", recordId); const { data, error } = await q; if (error) throw error; return (data ?? []).map((r: Row) => ({ id:r.id, workspaceId:r.workspace_id, recordId:r.record_id, recordName:r.record_name, actorId:r.actor_id, actorName:r.actor_name, type:r.type, summary:r.summary, changes:r.changes ?? undefined, at:r.at })); }

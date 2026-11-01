@@ -19,10 +19,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!id) { res.status(400).json({ error: "Missing record id" }); return; }
 
   // Every operation is scoped to the workspace the member is currently in.
-  const workspace = getActiveWorkspace(user);
+  const workspace = await getActiveWorkspace(user);
 
   if (req.method === "GET") {
-    const record = getRecord(id, workspace.id);
+    const record = await getRecord(id, workspace.id);
     if (!record) { res.status(404).json({ error: "Not found" }); return; }
     if ((req.headers.accept || "").includes("text/csv")) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -33,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "PATCH") {
-    const existing = getRecord(id, workspace.id);
+    const existing = await getRecord(id, workspace.id);
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const patch: Partial<ExtractedRecord> = {};
@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         patch.assigneeId = undefined;
       } else {
         if (typeof raw !== "string") { res.status(400).json({ error: "Invalid assignee" }); return; }
-        const member = workspaceMembers(workspace.id).find((candidate) => candidate.userId === raw);
+        const member = (await workspaceMembers(workspace.id)).find((candidate) => candidate.userId === raw);
         if (!member) { res.status(400).json({ error: "Assignee must be a member of this workspace" }); return; }
         patch.assigneeId = member.userId;
         assigneeName = member.name;
@@ -87,15 +87,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     patch.updatedBy = user.id;
     patch.updatedAt = new Date().toISOString();
 
-    const saved = updateRecord(id, patch, workspace.id);
+    const saved = await updateRecord(id, patch, workspace.id);
     if (!saved) { res.status(404).json({ error: "Not found" }); return; }
 
     const previousAssignee = existing.assigneeId
-      ? workspaceMembers(workspace.id).find((member) => member.userId === existing.assigneeId)?.name
+      ? (await workspaceMembers(workspace.id)).find((member) => member.userId === existing.assigneeId)?.name
       : undefined;
 
     if (assigneeChanged) {
-      recordActivity({
+      await recordActivity({
         workspaceId: workspace.id,
         record: existing,
         actor: user,
@@ -106,7 +106,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (changes.length > 0) {
-      recordActivity({
+      await recordActivity({
         workspaceId: workspace.id,
         record: existing,
         actor: user,
@@ -121,11 +121,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "DELETE") {
-    const existing = getRecord(id, workspace.id);
+    const existing = await getRecord(id, workspace.id);
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-    const deleted = deleteRecord(id, workspace.id);
+    const deleted = await deleteRecord(id, workspace.id);
     if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
-    recordActivity({
+    await recordActivity({
       workspaceId: workspace.id,
       record: existing,
       actor: user,

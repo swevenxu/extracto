@@ -20,24 +20,28 @@ export default async function handler(
     return;
   }
 
-  let user: User | undefined;
-  if (mode === "signup") {
-    try {
-      user = createUser(email, typeof name === "string" ? name.trim().slice(0, 80) || email.split("@")[0] : email.split("@")[0], password);
-    } catch {
+  try {
+    let user: User | undefined;
+    if (mode === "signup") {
+      user = await createUser(email, typeof name === "string" ? name.trim().slice(0, 80) || email.split("@")[0] : email.split("@")[0], password);
+    } else {
+      user = await authenticateUser(email, password);
+    }
+    if (!user) {
+      res.status(401).json({ error: "Email or password is incorrect" });
+      return;
+    }
+
+    const token = await createSession(user);
+    res.setHeader("Set-Cookie", `session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 7}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+
+    res.status(200).json({ user });
+  } catch (error) {
+    if (error instanceof Error && error.message === "User already exists") {
       res.status(409).json({ error: "An account with this email already exists" });
       return;
     }
-  } else {
-    user = authenticateUser(email, password);
+    console.error("Authentication request failed", error);
+    res.status(500).json({ error: "Authentication service is temporarily unavailable" });
   }
-  if (!user) {
-    res.status(401).json({ error: "Email or password is incorrect" });
-    return;
-  }
-
-  const token = await createSession(user);
-  res.setHeader("Set-Cookie", `session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 7}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
-
-  res.status(200).json({ user });
 }

@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === "GET") {
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({
-      usage: getUsage(user),
+      usage: await getUsage(user),
       plans: PLAN_IDS.map((id) => PLANS[id]),
       // Checkout is not wired up: a plan change is an entitlement, not a payment.
       billingConnected: false,
@@ -28,10 +28,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(400).json({ error: "Unknown plan" });
       return;
     }
-    setPlan(user.id, body.plan);
+    await setPlan(user.id, body.plan);
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({
-      usage: getUsage(user),
+      usage: await getUsage(user),
       plans: PLAN_IDS.map((id) => PLANS[id]),
       billingConnected: false,
     });

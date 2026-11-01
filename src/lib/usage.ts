@@ -10,9 +10,9 @@
  * not a recorded payment. Replace `setPlan` with a checkout webhook when that
  * lands.
  */
-import fs from "fs";
-import path from "path";
+import { randomUUID } from "crypto";
 import type { PlanId, User } from "./types";
+import { getSupabaseAdmin } from "./supabase";
 import {
   MAX_EXPORT_PRESETS,
   MAX_WORKSPACES_PER_USER,
@@ -34,17 +34,15 @@ import {
 export { PLANS, PLAN_IDS, isPlanId, planFor, formatResetDate } from "./plans";
 export type { Allowance, DocumentQuota, Plan, UsageSnapshot } from "./plans";
 
-const USAGE_FILE = path.join(process.cwd(), "data", "usage.json");
-
 /** Share of the allowance at which the UI starts warning, before the wall. */
 const WARN_AT_PERCENT = 80;
 
-export function activePlanId(userId: string): PlanId {
-  return planFor(getPreferences(userId)?.plan).id;
+export async function activePlanId(userId: string): Promise<PlanId> {
+  return planFor((await getPreferences(userId))?.plan).id;
 }
 
-export function setPlan(userId: string, plan: PlanId): PlanId {
-  updatePreferences(userId, { plan });
+export async function setPlan(userId: string, plan: PlanId): Promise<PlanId> {
+  await updatePreferences(userId, { plan });
   return plan;
 }
 
@@ -62,32 +60,14 @@ export function currentPeriod(now = new Date()): UsagePeriod {
   };
 }
 
-interface UsageEntry {
-  userId: string;
-  periodStart: string;
-  documents: number;
-}
-
-function readEntries(): UsageEntry[] {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(USAGE_FILE, "utf-8"));
-    return Array.isArray(parsed) ? (parsed as UsageEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeEntries(entries: UsageEntry[]) {
-  const dir = path.dirname(USAGE_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(USAGE_FILE, JSON.stringify(entries, null, 2), "utf-8");
-}
-
-function documentsThisPeriod(userId: string, periodStart: string): number {
-  const entry = readEntries().find(
-    (candidate) => candidate.userId === userId && candidate.periodStart === periodStart
-  );
-  return entry ? Math.max(0, entry.documents) : 0;
+async function documentsThisPeriod(userId: string, periodStart: string): Promise<number> {
+  const { count, error } = await getSupabaseAdmin()
+    .from("usage_events")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", periodStart);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 function allowance(used: number, limit: number): Allowance {
@@ -100,10 +80,10 @@ function allowance(used: number, limit: number): Allowance {
 }
 
 /** This month's document allowance for one account. */
-export function documentQuota(user: User): DocumentQuota {
-  const plan = planFor(activePlanId(user.id));
+export async function documentQuota(user: User): Promise<DocumentQuota> {
+  const plan = planFor(await activePlanId(user.id));
   const period = currentPeriod();
-  const used = documentsThisPeriod(user.id, period.start);
+  const used = await documentsThisPeriod(user.id, period.start);
   return {
     plan: plan.id,
     planName: plan.name,
@@ -121,14 +101,17 @@ export function documentQuota(user: User): DocumentQuota {
  * last slot cannot both be admitted. Older periods are dropped on every write, so
  * the file never grows past a couple of rows per account.
  */
-export function consumeDocumentQuota(user: User): { allowed: boolean; quota: DocumentQuota } {
-  const plan = planFor(activePlanId(user.id));
+export async function consumeDocumentQuota(user: User): Promise<{ allowed: boolean; quota: DocumentQuota }> {
+  const plan = planFor(await activePlanId(user.id));
   const period = currentPeriod();
-  const entries = readEntries().filter((entry) => entry.periodStart >= period.start);
-  const index = entries.findIndex(
-    (entry) => entry.userId === user.id && entry.periodStart === period.start
-  );
-  const used = index >= 0 ? Math.max(0, entries[index].documents) : 0;
+  const { data: nextCount, error } = await getSupabaseAdmin().rpc("consume_document_quota", {
+    p_user_id: user.id,
+    p_period_start: period.start,
+    p_limit: plan.documentsPerMonth,
+    p_event_id: randomUUID(),
+  });
+  if (error) throw error;
+  const used = Number(nextCount);
   const quota = (count: number): DocumentQuota => ({
     plan: plan.id,
     planName: plan.name,
@@ -141,17 +124,13 @@ export function consumeDocumentQuota(user: User): { allowed: boolean; quota: Doc
   if (used >= plan.documentsPerMonth) {
     return { allowed: false, quota: quota(used) };
   }
-
-  if (index >= 0) entries[index] = { ...entries[index], documents: used + 1 };
-  else entries.push({ userId: user.id, periodStart: period.start, documents: 1 });
-  writeEntries(entries);
-  return { allowed: true, quota: quota(used + 1) };
+  return { allowed: true, quota: quota(used) };
 }
 
-export function getUsage(user: User): UsageSnapshot {
-  const plan = planFor(activePlanId(user.id));
+export async function getUsage(user: User): Promise<UsageSnapshot> {
+  const plan = planFor(await activePlanId(user.id));
   const period = currentPeriod();
-  const documents = allowance(documentsThisPeriod(user.id, period.start), plan.documentsPerMonth);
+  const documents = allowance(await documentsThisPeriod(user.id, period.start), plan.documentsPerMonth);
   const level: UsageLevel =
     documents.remaining === 0 ? "full" : documents.percent >= WARN_AT_PERCENT ? "warning" : "ok";
   return {
@@ -162,8 +141,8 @@ export function getUsage(user: User): UsageSnapshot {
     periodEnd: period.end,
     resetsAt: period.end,
     documents,
-    workspaces: allowance(listWorkspacesForUser(user).length, MAX_WORKSPACES_PER_USER),
-    savedExports: allowance(listExportPresets(user.id).length, MAX_EXPORT_PRESETS),
+    workspaces: allowance((await listWorkspacesForUser(user)).length, MAX_WORKSPACES_PER_USER),
+    savedExports: allowance((await listExportPresets(user.id)).length, MAX_EXPORT_PRESETS),
     membersPerWorkspace: MAX_WORKSPACE_MEMBERS,
     maxFileMb: MAX_FILE_MB,
     level,

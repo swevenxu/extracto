@@ -7,9 +7,9 @@ import Link from "next/link";
 export const metadata = { title: "Analytics — Extracto" };
 export default async function AnalyticsPage() {
   const user = await currentUser();
-  const workspace = user ? getActiveWorkspace(user) : null;
-  const records = workspace ? listRecordsByWorkspace(workspace.id) : [];
-  const baseCurrency = user ? getPreferences(user.id)?.baseCurrency : undefined;
+  const workspace = user ? await getActiveWorkspace(user) : null;
+  const records = workspace ? await listRecordsByWorkspace(workspace.id) : [];
+  const baseCurrency = user ? (await getPreferences(user.id))?.baseCurrency : undefined;
   const stats = user ? await computeStats(records, baseCurrency) : await computeStats(records);
   const weeks = documentsByWeek(records);
   const hasTotals = Object.keys(stats.totalsByCurrency).length > 0;

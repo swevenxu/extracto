@@ -21,7 +21,10 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, email: form.get("email"), password: form.get("password"), name: form.get("name") }),
       });
-      const result = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const result = contentType.includes("application/json")
+        ? await response.json() as { error?: string }
+        : { error: `Server error (${response.status})` };
       if (!response.ok) throw new Error(result.error || "Could not sign in");
       router.replace("/");
       router.refresh();

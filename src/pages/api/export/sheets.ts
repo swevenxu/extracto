@@ -53,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     recordIds?: string[];
   };
 
-  const preset = typeof presetId === "string" && presetId ? getExportPreset(presetId, user.id) : undefined;
+  const preset = typeof presetId === "string" && presetId ? await getExportPreset(presetId, user.id) : undefined;
   if (presetId && !preset) {
     res.status(404).json({ error: "Saved export not found" });
     return;
@@ -89,14 +89,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Exports cover the workspace the member is currently in.
-  const workspace = getActiveWorkspace(user);
+  const workspace = await getActiveWorkspace(user);
   let records: DocumentRecord[];
   if (Array.isArray(recordIds) && recordIds.length > 0) {
-    records = recordIds
-      .map((id) => getRecord(id, workspace.id))
+    records = (await Promise.all(recordIds.map((id) => getRecord(id, workspace.id))))
       .filter((record): record is DocumentRecord => !!record);
   } else {
-    records = listRecordsByWorkspace(workspace.id).filter((record) => record.status === "reviewed");
+    records = (await listRecordsByWorkspace(workspace.id)).filter((record) => record.status === "reviewed");
   }
   records = records.filter((record) => record.status === "reviewed");
 

@@ -68,7 +68,7 @@ export function recordActivity(input: {
   type: ActivityType;
   summary: string;
   changes?: ActivityChange[];
-}): ActivityEvent {
+}): Promise<ActivityEvent> {
   return appendActivity({
     workspaceId: input.workspaceId,
     recordId: input.record.id,

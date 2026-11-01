@@ -11,15 +11,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const user = await currentUserFromCookie(req.headers.cookie);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-  const workspace = getActiveWorkspace(user);
+  const workspace = await getActiveWorkspace(user);
   res.status(200).json({
-    records: listRecordsByWorkspace(workspace.id),
+    records: await listRecordsByWorkspace(workspace.id),
     workspace: {
       id: workspace.id,
       name: workspace.name,
       role: workspaceRole(workspace, user.id),
       memberCount: workspace.members.length,
     },
-    members: workspaceMembers(workspace.id),
+    members: await workspaceMembers(workspace.id),
   });
 }

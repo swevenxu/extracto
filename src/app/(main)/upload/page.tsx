@@ -6,7 +6,7 @@ import Link from "next/link";
 export const metadata = { title: "Upload — Extracto" };
 export default async function UploadPage() {
   const user = await currentUser();
-  const usage = user ? getUsage(user) : null;
+  const usage = user ? await getUsage(user) : null;
 
   return <main className="page-shell">
     <div className="page-column">

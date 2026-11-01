@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "GET") {
-    const active = getActiveWorkspace(user);
+    const active = await getActiveWorkspace(user);
     res.status(200).json({
       workspace: {
         id: active.id,
@@ -29,13 +29,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         role: workspaceRole(active, user.id),
         memberCount: active.members.length,
       },
-      workspaces: listWorkspacesForUser(user).map((workspace) => ({
+      workspaces: (await listWorkspacesForUser(user)).map((workspace) => ({
         id: workspace.id,
         name: workspace.name,
         role: workspaceRole(workspace, user.id),
         memberCount: workspace.members.length,
       })),
-      members: workspaceMembers(active.id),
+      members: await workspaceMembers(active.id),
     });
     return;
   }
@@ -49,8 +49,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      const workspace = createWorkspace(name, user);
-      setActiveWorkspace(user.id, workspace.id);
+      const workspace = await createWorkspace(name, user);
+      await setActiveWorkspace(user.id, workspace.id);
       res.status(201).json({
         workspace: {
           id: workspace.id,
@@ -58,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           role: "owner",
           memberCount: workspace.members.length,
         },
-        members: workspaceMembers(workspace.id),
+        members: await workspaceMembers(workspace.id),
       });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : "Could not create workspace" });

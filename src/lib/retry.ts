@@ -9,8 +9,8 @@ import type { ExtractedRecord, User } from "./types";
  * recorded in the document history against the acting member.
  */
 export async function retryExtraction(id: string, user: User): Promise<ExtractedRecord> {
-  const workspace = getActiveWorkspace(user);
-  const record = getRecord(id, workspace.id);
+  const workspace = await getActiveWorkspace(user);
+  const record = await getRecord(id, workspace.id);
   if (!record) throw new Error("Record not found");
 
   const text = record.rawText || "";
@@ -25,7 +25,7 @@ export async function retryExtraction(id: string, user: User): Promise<Extracted
     updatedBy: user.id,
     updatedAt: new Date().toISOString(),
   };
-  upsertRecord(processing);
+  await upsertRecord(processing);
 
   try {
     const { result, provider } = await extractStructuredFromText(text, record.docType);
@@ -36,8 +36,8 @@ export async function retryExtraction(id: string, user: User): Promise<Extracted
       status: "extracted",
       demoMode: provider.demoMode,
     };
-    upsertRecord(updated);
-    recordActivity({
+    await upsertRecord(updated);
+    await recordActivity({
       workspaceId: workspace.id,
       record,
       actor: user,
@@ -48,8 +48,8 @@ export async function retryExtraction(id: string, user: User): Promise<Extracted
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const failed: ExtractedRecord = { ...processing, status: "failed", extractionError: message };
-    upsertRecord(failed);
-    recordActivity({
+    await upsertRecord(failed);
+    await recordActivity({
       workspaceId: workspace.id,
       record,
       actor: user,

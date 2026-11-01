@@ -19,8 +19,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!id || !/^[\w-]+$/.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   // Records are scoped to a workspace, the same one the review page resolves.
-  const workspace = getActiveWorkspace(user);
-  const record = getRecord(id, workspace.id);
+  const workspace = await getActiveWorkspace(user);
+  const record = await getRecord(id, workspace.id);
   if (!record) { res.status(404).json({ error: "Not found" }); return; }
 
   const bytes = await readDocument(id);

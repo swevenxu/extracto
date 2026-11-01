@@ -9,9 +9,9 @@ export const metadata = { title: "Documents — Extracto" };
 
 export default async function DocumentsPage() {
   const user = await currentUser();
-  const workspace = user ? getActiveWorkspace(user) : null;
-  const records = workspace ? listRecordsByWorkspace(workspace.id) : [];
-  const members = workspace ? workspaceMembers(workspace.id) : [];
+  const workspace = user ? await getActiveWorkspace(user) : null;
+  const records = workspace ? await listRecordsByWorkspace(workspace.id) : [];
+  const members = workspace ? await workspaceMembers(workspace.id) : [];
   return <main className="page-shell">
     <header className="page-heading">
       <div>

@@ -12,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "GET") {
-    const prefs = getPreferences(user.id);
+    const prefs = await getPreferences(user.id);
     res.status(200).json({
       baseCurrency: prefs?.baseCurrency || "USD",
       locale: prefs?.locale || "en-US",
@@ -32,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       patch.locale = body.locale.slice(0, 10);
     }
 
-    const updated = updatePreferences(user.id, patch);
+    const updated = await updatePreferences(user.id, patch);
     res.status(200).json({
       baseCurrency: updated.baseCurrency,
       locale: updated.locale,

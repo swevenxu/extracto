@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const workspace = getActiveWorkspace(user);
+  const workspace = await getActiveWorkspace(user);
   const body = req.body && typeof req.body === "object" ? req.body : {};
   const action = body.action;
 
@@ -38,14 +38,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(400).json({ error: "Enter a valid email address" });
         return;
       }
-      addWorkspaceMember(workspace.id, user.id, email);
+      await addWorkspaceMember(workspace.id, user.id, email);
     } else if (action === "remove") {
       const userId = typeof body.userId === "string" ? body.userId : "";
       if (!userId) {
         res.status(400).json({ error: "Missing member" });
         return;
       }
-      removeWorkspaceMember(workspace.id, user.id, userId);
+      await removeWorkspaceMember(workspace.id, user.id, userId);
     } else {
       res.status(400).json({ error: "Unknown action" });
       return;
@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   res.status(200).json({
-    members: workspaceMembers(workspace.id),
+    members: await workspaceMembers(workspace.id),
     role: workspaceRole(workspace, user.id),
   });
 }

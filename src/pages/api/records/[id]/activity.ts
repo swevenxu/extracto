@@ -16,9 +16,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const id = String(req.query.id || "");
   if (!id) { res.status(400).json({ error: "Missing record id" }); return; }
 
-  const workspace = getActiveWorkspace(user);
-  const record = getRecord(id, workspace.id);
+  const workspace = await getActiveWorkspace(user);
+  const record = await getRecord(id, workspace.id);
   if (!record) { res.status(404).json({ error: "Not found" }); return; }
 
-  res.status(200).json({ events: listActivity(workspace.id, id, 100) });
+  res.status(200).json({ events: await listActivity(workspace.id, id, 100) });
 }

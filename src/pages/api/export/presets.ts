@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === "GET") {
-    res.status(200).json({ presets: listExportPresets(user.id) });
+    res.status(200).json({ presets: await listExportPresets(user.id) });
     return;
   }
 
@@ -51,13 +51,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? sanitizeSheetTitle(body.sheetName)
         : undefined;
 
-    if (typeof body.id === "string" && body.id && !getExportPreset(body.id, user.id)) {
+    if (typeof body.id === "string" && body.id && !await getExportPreset(body.id, user.id)) {
       res.status(404).json({ error: "Saved export not found" });
       return;
     }
 
     try {
-      const preset = saveExportPreset({
+      const preset = await saveExportPreset({
         id: typeof body.id === "string" && body.id ? body.id : undefined,
         userId: user.id,
         name,
@@ -79,7 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(400).json({ error: "Missing export id" });
       return;
     }
-    const deleted = deleteExportPreset(id, user.id);
+    const deleted = await deleteExportPreset(id, user.id);
     res.status(deleted ? 200 : 404).json(deleted ? { ok: true } : { error: "Saved export not found" });
     return;
   }

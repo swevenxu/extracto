@@ -23,14 +23,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return;
   }
 
-  const workspace = getActiveWorkspace(user);
-  const record = getRecord(id, workspace.id);
+  const workspace = await getActiveWorkspace(user);
+  const record = await getRecord(id, workspace.id);
   if (!record) {
     res.status(404).json({ error: "Record not found" });
     return;
   }
 
-  if (!deleteRecord(id, workspace.id)) {
+  if (!await deleteRecord(id, workspace.id)) {
     res.status(404).json({ error: "Record not found" });
     return;
   }

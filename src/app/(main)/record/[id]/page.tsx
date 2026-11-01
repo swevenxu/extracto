@@ -12,11 +12,11 @@ export default async function RecordPage({ params }: PageProps) {
   const { id } = await params;
   const user = await currentUser();
   if (!user) redirect("/login");
-  const workspace = getActiveWorkspace(user);
-  const record = getRecord(id, workspace.id);
+  const workspace = await getActiveWorkspace(user);
+  const record = await getRecord(id, workspace.id);
   if (!record) notFound();
-  const members = workspaceMembers(workspace.id);
-  const activity = listActivity(workspace.id, id, 50);
+  const members = await workspaceMembers(workspace.id);
+  const activity = await listActivity(workspace.id, id, 50);
   return <main className="page-shell">
     <header className="page-heading">
       <div>

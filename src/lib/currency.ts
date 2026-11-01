@@ -240,7 +240,7 @@ export async function formatCurrencyWithConversion(
  */
 export async function getUserBaseCurrency(userId: string): Promise<Currency> {
   try {
-    const prefs = getPreferences(userId);
+    const prefs = await getPreferences(userId);
     if (prefs?.baseCurrency) {
       return prefs.baseCurrency as Currency;
     }

@@ -14,12 +14,12 @@ export const metadata = {
 
 export default async function DashboardPage() {
   const user = await currentUser();
-  const workspace = user ? getActiveWorkspace(user) : null;
-  const records = workspace ? listRecordsByWorkspace(workspace.id) : [];
-  const members = workspace ? workspaceMembers(workspace.id) : [];
-  const baseCurrency = user ? getPreferences(user.id)?.baseCurrency : undefined;
+  const workspace = user ? await getActiveWorkspace(user) : null;
+  const records = workspace ? await listRecordsByWorkspace(workspace.id) : [];
+  const members = workspace ? await workspaceMembers(workspace.id) : [];
+  const baseCurrency = user ? (await getPreferences(user.id))?.baseCurrency : undefined;
   const stats = user ? await computeStats(records, baseCurrency) : await computeStats(records);
-  const usage = user ? getUsage(user) : null;
+  const usage = user ? await getUsage(user) : null;
 
   return (
     <div className="page-shell">

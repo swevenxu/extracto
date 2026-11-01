@@ -18,13 +18,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const body = req.body && typeof req.body === "object" ? req.body : {};
   const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId : "";
-  const workspace = workspaceId ? getWorkspaceForUser(workspaceId, user.id) : undefined;
+  const workspace = workspaceId ? await getWorkspaceForUser(workspaceId, user.id) : undefined;
   if (!workspace) {
     res.status(404).json({ error: "Workspace not found" });
     return;
   }
 
-  setActiveWorkspace(user.id, workspace.id);
+  await setActiveWorkspace(user.id, workspace.id);
   res.status(200).json({
     workspace: {
       id: workspace.id,

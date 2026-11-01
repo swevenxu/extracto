@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const user = await currentUserFromCookie(req.headers.cookie);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
   // Documents land in the workspace the member is currently working in.
-  const workspace = getActiveWorkspace(user);
+  const workspace = await getActiveWorkspace(user);
   const chunks: Buffer[] = [];
   let bytes = 0;
   let tooLarge = false;
@@ -75,7 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Deduplicate by content hash, scoped to the document type.
       const hash = buildHash(text || String(content).slice(0, 8000), workspace.id, docType);
-      const existing = getRecord(hash, workspace.id);
+      const existing = await getRecord(hash, workspace.id);
       // A failed record is re-attempted rather than reported as a duplicate, so retrying
       // a file from the batch actually re-runs extraction on the uploaded bytes.
       if (existing && existing.status !== "failed") {
@@ -87,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // count it even if extraction later fails: the vision/LLM call is the cost
       // being metered. Duplicates are free and a retry re-runs an already-counted
       // document, so only genuinely new files consume the allowance.
-      const { allowed, quota: usage } = consumeDocumentQuota(user);
+      const { allowed, quota: usage } = await consumeDocumentQuota(user);
       if (!allowed) {
         res.status(402).json({
           error: `Monthly limit reached — ${usage.used} of ${usage.limit} documents processed on the ${usage.planName} plan. Your allowance resets on ${formatResetDate(usage.resetsAt)}.`,
@@ -102,7 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // Persist the original document bytes so the review page can show the PDF.
-      saveDocument(hash, fileBytes).catch(() => {});
+      await saveDocument(hash, fileBytes);
 
       // Start as "processing" so the UI shows a spinner immediately.
       const processingRecord: ExtractedRecord = {
@@ -119,8 +119,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: "processing",
         rawText: text ? text.slice(0, 12000) : "[Extracted via Vision API]",
       };
-      upsertRecord(processingRecord);
-      recordActivity({
+      await upsertRecord(processingRecord);
+      await recordActivity({
         workspaceId: workspace.id,
         record: processingRecord,
         actor: user,
@@ -138,8 +138,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           status: "extracted",
           demoMode: provider.demoMode,
         };
-        upsertRecord(record);
-        recordActivity({
+        await upsertRecord(record);
+        await recordActivity({
           workspaceId: workspace.id,
           record,
           actor: user,
@@ -154,8 +154,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           status: "failed",
           extractionError: errorMessage,
         };
-        upsertRecord(failedRecord);
-        recordActivity({
+        await upsertRecord(failedRecord);
+        await recordActivity({
           workspaceId: workspace.id,
           record: failedRecord,
           actor: user,

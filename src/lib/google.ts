@@ -125,12 +125,12 @@ export async function jwtDecodeState(token: string): Promise<string | null> {
 
 import { readUsers, writeUsers } from "@/lib/storage";
 
-function findUserIndex(userId: string): number {
-  return readUsers().findIndex((u) => u.id === userId);
+async function findUserIndex(userId: string): Promise<number> {
+  return (await readUsers()).findIndex((u) => u.id === userId);
 }
 
-export function hasGoogleToken(userId: string): boolean {
-  const u = readUsers().find((x) => x.id === userId) as
+export async function hasGoogleToken(userId: string): Promise<boolean> {
+  const u = (await readUsers()).find((x) => x.id === userId) as
     | { googleToken?: string }
     | undefined;
   return Boolean(u?.googleToken);
@@ -140,19 +140,19 @@ export async function saveTokensForUser(
   userId: string,
   tokens: StoredTokens,
 ): Promise<void> {
-  const users = readUsers();
+  const users = await readUsers();
   const idx = users.findIndex((u) => u.id === userId);
   if (idx < 0) throw new Error("user not found");
   const next = users.map((u, i) =>
     i === idx ? { ...u, googleToken: encryptToken(JSON.stringify(tokens)) } : u,
   );
-  writeUsers(next as Parameters<typeof writeUsers>[0]);
+  await writeUsers(next as Parameters<typeof writeUsers>[0]);
 }
 
 export async function getTokensForUser(
   userId: string,
 ): Promise<StoredTokens | null> {
-  const user = readUsers().find((u) => u.id === userId) as
+  const user = (await readUsers()).find((u) => u.id === userId) as
     | { googleToken?: string }
     | undefined;
   if (!user?.googleToken) return null;
@@ -168,7 +168,7 @@ export async function getTokensForUser(
     const refreshed = await refreshIfNeeded(tokens);
     if (!refreshed) {
       // refresh failed: treat as revoked, drop the stored token
-      deleteTokensForUser(userId);
+      await deleteTokensForUser(userId);
       return null;
     }
     await saveTokensForUser(userId, refreshed);
@@ -177,8 +177,8 @@ export async function getTokensForUser(
   return tokens;
 }
 
-export function deleteTokensForUser(userId: string): void {
-  const users = readUsers();
+export async function deleteTokensForUser(userId: string): Promise<void> {
+  const users = await readUsers();
   const idx = users.findIndex((u) => u.id === userId);
   if (idx < 0) return;
   const next = users.map((u, i) => {
@@ -189,5 +189,5 @@ export function deleteTokensForUser(userId: string): void {
     >;
     return rest as unknown as User;
   });
-  writeUsers(next as Parameters<typeof writeUsers>[0]);
+  await writeUsers(next as Parameters<typeof writeUsers>[0]);
 }
