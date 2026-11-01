@@ -128,9 +128,15 @@ export async function consumeDocumentQuota(user: User): Promise<{ allowed: boole
 }
 
 export async function getUsage(user: User): Promise<UsageSnapshot> {
-  const plan = planFor(await activePlanId(user.id));
   const period = currentPeriod();
-  const documents = allowance(await documentsThisPeriod(user.id, period.start), plan.documentsPerMonth);
+  const [preferences, used, workspaces, savedExports] = await Promise.all([
+    getPreferences(user.id),
+    documentsThisPeriod(user.id, period.start),
+    listWorkspacesForUser(user),
+    listExportPresets(user.id),
+  ]);
+  const plan = planFor(preferences?.plan);
+  const documents = allowance(used, plan.documentsPerMonth);
   const level: UsageLevel =
     documents.remaining === 0 ? "full" : documents.percent >= WARN_AT_PERCENT ? "warning" : "ok";
   return {
@@ -141,8 +147,8 @@ export async function getUsage(user: User): Promise<UsageSnapshot> {
     periodEnd: period.end,
     resetsAt: period.end,
     documents,
-    workspaces: allowance((await listWorkspacesForUser(user)).length, MAX_WORKSPACES_PER_USER),
-    savedExports: allowance((await listExportPresets(user.id)).length, MAX_EXPORT_PRESETS),
+    workspaces: allowance(workspaces.length, MAX_WORKSPACES_PER_USER),
+    savedExports: allowance(savedExports.length, MAX_EXPORT_PRESETS),
     membersPerWorkspace: MAX_WORKSPACE_MEMBERS,
     maxFileMb: MAX_FILE_MB,
     level,
