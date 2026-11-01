@@ -30,7 +30,11 @@ Open `http://localhost:3000` and create an account. Account passwords are stored
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | Random encryption secret of at least 32 bytes for stored Google tokens. |
 
-Google Sheets export requires an OAuth client with the callback URL `${NEXT_PUBLIC_URL}/api/google/callback` and the Sheets API enabled for its Google Cloud project.
+Google Sheets export requires an OAuth client with the callback URL
+`${NEXT_PUBLIC_URL}/api/google/callback` and the Sheets API enabled for its
+Google Cloud project. Configure the Google variables in Vercel before using
+Connect Google; otherwise Extracto will report that Google OAuth is not
+configured.
 
 ## Checks
 

@@ -12,16 +12,31 @@ import { SignJWT, jwtVerify } from "jose";
 import { SESSION_SECRET } from "@/lib/session";
 import type { User } from "@/lib/types";
 
-const REDIRECT_URI = `${process.env.NEXT_PUBLIC_URL}/api/google/callback`;
-
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+
+function googleConfig() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const appUrl = process.env.NEXT_PUBLIC_URL;
+  if (!clientId || !clientSecret || !appUrl) {
+    throw new Error(
+      "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and NEXT_PUBLIC_URL in the deployment environment",
+    );
+  }
+  return {
+    clientId,
+    clientSecret,
+    redirectUri: `${appUrl.replace(/\/$/, "")}/api/google/callback`,
+  };
+}
 
 /** Fresh OAuth2 client — tokens are set per-request from encrypted storage. */
 export function makeClient(): OAuth2Client {
+  const config = googleConfig();
   return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    REDIRECT_URI,
+    config.clientId,
+    config.clientSecret,
+    config.redirectUri,
   );
 }
 
